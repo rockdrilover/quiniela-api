@@ -1,0 +1,6 @@
+# En el repo todo va con saltos de línea LF (el servidor es Linux)
+* text=auto eol=lf
+/mvnw text eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
