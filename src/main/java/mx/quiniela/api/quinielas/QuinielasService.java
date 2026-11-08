@@ -119,7 +119,7 @@ public class QuinielasService {
         JornadaDto actualDto = actual.map(j -> dtos.get(j.getId())).orElse(null);
         String motivo = motivoNoPuedeCrear(u, actualDto, actual
                 .map(j -> mias.stream().filter(q -> q.getIdJornada().equals(j.getId())).count()).orElse(0L));
-        return new MisQuinielasDto(actualDto, motivo == null, motivo, List.copyOf(dtos.values()), lista);
+        return new MisQuinielasDto(u.getEstado().name(), actualDto, motivo == null, motivo, List.copyOf(dtos.values()), lista);
     }
 
     @Transactional(readOnly = true)

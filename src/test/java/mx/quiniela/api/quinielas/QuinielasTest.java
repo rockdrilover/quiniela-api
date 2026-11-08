@@ -159,6 +159,7 @@ class QuinielasTest {
         crear(pepe, false, p(0, 1, 0)).andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("USUARIO_NO_APROBADO"));
         mvc.perform(como(pepe, get("/api/quinielas"))).andExpect(jsonPath("$.puedeCrear").value(false))
+                .andExpect(jsonPath("$.estadoUsuario").value("pendiente"))
                 .andExpect(jsonPath("$.motivoNoPuedeCrear").value(org.hamcrest.Matchers.containsString("pendiente")));
     }
 

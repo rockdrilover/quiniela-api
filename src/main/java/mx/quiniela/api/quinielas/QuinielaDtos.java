@@ -38,6 +38,8 @@ public final class QuinielaDtos {
 
     /** Pantalla 3: la jornada vigente y todas mis quinielas (con las jornadas a las que pertenecen). */
     public record MisQuinielasDto(
+            /** Estado real de la cuenta (el del token puede ir atrasado hasta 15 min tras una aprobación). */
+            String estadoUsuario,
             JornadaDto actual,
             boolean puedeCrear,
             String motivoNoPuedeCrear,
