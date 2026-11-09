@@ -73,6 +73,19 @@ El cambio de contraseña es `PUT /api/auth/password` (arriba).
 
 Tras la aprobación, el token del usuario sigue diciendo `pendiente` hasta que se renueve (máx. 15 min) o vuelva a entrar.
 
+## Torneos (solo rol admin)
+
+Cada jornada pertenece a un torneo (tabla `temporadas`): Apertura 2026, Clausura 2027… El número de jornadas es libre. Ciclo: `proximo` → `en_curso` → `finalizado`. Solo uno en curso a la vez (es el que ve la gente). En un torneo próximo se preparan jornadas pero no se abren; uno finalizado ya no acepta jornadas.
+
+| Método | Ruta | Notas |
+|---|---|---|
+| GET | `/api/admin/torneos` | `[{id, nombre, estado, fechaInicio, fechaFin, totalJornadas, jornadasFinalizadas}]` |
+| POST | `/api/admin/torneos` | `{nombre, fechaInicio?, fechaFin?}` → `proximo` · 409 `NOMBRE_EN_USO` · 400 `FECHAS_INVALIDAS` |
+| PUT | `/api/admin/torneos/{id}` | Mismo cuerpo: nombre y fechas |
+| POST | `/api/admin/torneos/{id}/iniciar` | 409 `OTRO_EN_CURSO` si ya hay uno en curso |
+| POST | `/api/admin/torneos/{id}/finalizar` | 409 `JORNADAS_PENDIENTES` si tiene jornadas sin finalizar |
+| DELETE | `/api/admin/torneos/{id}` | Solo próximo y sin jornadas |
+
 ## Jornadas y partidos (solo rol admin)
 
 Ciclo: `borrador` (se arman partidos) → `abierta` (acepta pronósticos hasta que empieza el primer partido; solo una a la vez) → `cerrada` (se capturan marcadores) → `finalizada` (ranking definitivo). `estadoVisual` combina estado y hora: `BORRADOR`, `ACTIVA`, `CERRADA`, `EN_JUEGO`, `FINALIZADA`.
@@ -80,10 +93,11 @@ Ciclo: `borrador` (se arman partidos) → `abierta` (acepta pronósticos hasta q
 | Método | Ruta | Notas |
 |---|---|---|
 | GET | `/api/equipos` | Catálogo (cualquier usuario con sesión) |
-| GET | `/api/admin/jornadas` | Jornadas de la temporada activa, la más nueva primero |
-| POST | `/api/admin/jornadas` | `{nombre?, precio, pctPremio?}` — número consecutivo automático |
+| GET | `/api/admin/jornadas?idTemporada=` | Jornadas de un torneo (sin parámetro: el en curso), la más nueva primero; incluye `estadoTemporada` |
+| POST | `/api/admin/jornadas` | `{idTemporada?, nombre?, precio, pctPremio?}` — número consecutivo por torneo · 409 `TORNEO_FINALIZADO` |
+| PUT | `/api/admin/jornadas/{id}/nombre` | `{nombre}` — se puede renombrar en cualquier estado |
 | GET/PUT/DELETE | `/api/admin/jornadas/{id}` | Detalle con partidos · editar (precio solo en borrador) · eliminar (borrador sin quinielas) |
-| POST | `/api/admin/jornadas/{id}/abrir` · `/cerrar` · `/finalizar` | Abrir exige partidos y que el primero no haya empezado; finalizar exige que no queden partidos pendientes |
+| POST | `/api/admin/jornadas/{id}/abrir` · `/cerrar` · `/finalizar` | Abrir exige partidos, que el primero no haya empezado y que su torneo esté en curso (409 `TORNEO_NO_EN_CURSO`); finalizar exige que no queden partidos pendientes |
 | PUT | `/api/admin/jornadas/{id}/visible` | `{visible}` — ocultar/mostrar (no aplica a una abierta) |
 | POST | `/api/admin/jornadas/{id}/partidos` | `{idLocal, idVisitante, fechaHora}` (solo borrador; un equipo, un partido por jornada) |
 | PUT/DELETE | `/api/admin/partidos/{id}` | Editar o quitar (solo borrador) |
@@ -134,7 +148,7 @@ Solo cuentan las quinielas `participando` (pago validado). Puntos: 1 si le atina
 
 | Método | Ruta | Notas |
 |---|---|---|
-| GET | `/api/ranking/jornadas` | `{actual, jornadas[]}` para el selector |
+| GET | `/api/ranking/jornadas?idTorneo=` | `{actual, idTorneo, torneos[], jornadas[]}` para los selectores (torneos con jornadas publicadas) |
 | GET | `/api/ranking?idJornada=` | `{jornada, partidos[], bolsa, pronosticosVisibles, filas[]}` · sin `idJornada` usa la vigente · 204 si no hay ninguna |
 
 ## Correo en producción (cualquier SMTP)

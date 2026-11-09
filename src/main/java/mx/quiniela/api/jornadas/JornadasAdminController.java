@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,6 +19,7 @@ import jakarta.validation.Valid;
 import mx.quiniela.api.jornadas.JornadaDtos.CrearJornadaRequest;
 import mx.quiniela.api.jornadas.JornadaDtos.JornadaDetalleDto;
 import mx.quiniela.api.jornadas.JornadaDtos.ListaJornadasDto;
+import mx.quiniela.api.jornadas.JornadaDtos.NombreRequest;
 import mx.quiniela.api.jornadas.JornadaDtos.PartidoRequest;
 import mx.quiniela.api.jornadas.JornadaDtos.ResultadoRequest;
 import mx.quiniela.api.jornadas.JornadaDtos.VisibleRequest;
@@ -36,14 +38,14 @@ public class JornadasAdminController {
     // ---------------------------------------------------------------- jornadas
 
     @GetMapping("/jornadas")
-    public ListaJornadasDto listar() {
-        return servicio.listar();
+    public ListaJornadasDto listar(@RequestParam(required = false) Integer idTemporada) {
+        return servicio.listar(idTemporada);
     }
 
     @PostMapping("/jornadas")
     @ResponseStatus(HttpStatus.CREATED)
     public JornadaDetalleDto crear(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CrearJornadaRequest req) {
-        return servicio.crear(admin(jwt), req.nombre(), req.precio(), req.pctPremio());
+        return servicio.crear(admin(jwt), req.idTemporada(), req.nombre(), req.precio(), req.pctPremio());
     }
 
     @GetMapping("/jornadas/{id}")
@@ -54,6 +56,12 @@ public class JornadasAdminController {
     @PutMapping("/jornadas/{id}")
     public JornadaDetalleDto editar(@PathVariable Integer id, @Valid @RequestBody CrearJornadaRequest req) {
         return servicio.editar(id, req.nombre(), req.precio(), req.pctPremio());
+    }
+
+    @PutMapping("/jornadas/{id}/nombre")
+    public JornadaDetalleDto renombrar(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id,
+                                       @Valid @RequestBody NombreRequest req) {
+        return servicio.renombrar(admin(jwt), id, req.nombre());
     }
 
     @DeleteMapping("/jornadas/{id}")

@@ -313,7 +313,7 @@ public class QuinielasService {
     }
 
     private Optional<Jornada> buscarJornadaActual() {
-        Optional<Temporada> t = temporadas.findFirstByActivaTrueOrderByIdDesc();
+        Optional<Temporada> t = temporadas.enCurso();
         if (t.isEmpty()) return Optional.empty();
         List<Jornada> visibles = jornadas.findByIdTemporadaAndVisibleTrueOrderByNumeroDesc(t.get().getId()).stream()
                 .filter(j -> j.getEstado() != EstadoJornada.borrador).toList();

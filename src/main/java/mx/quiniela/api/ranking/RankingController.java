@@ -23,8 +23,8 @@ public class RankingController {
 
     /** Jornadas publicadas para el selector, y cuál es la vigente. */
     @GetMapping("/jornadas")
-    public JornadasRankingDto jornadas() {
-        return servicio.jornadas();
+    public JornadasRankingDto jornadas(@RequestParam(required = false) Integer idTorneo) {
+        return servicio.jornadas(idTorneo);
     }
 
     /** Sin idJornada usa la vigente; 204 si todavía no hay ninguna publicada. */

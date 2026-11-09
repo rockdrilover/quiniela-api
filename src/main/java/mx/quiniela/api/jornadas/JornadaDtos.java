@@ -9,6 +9,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import mx.quiniela.api.catalogos.CatalogosController.EquipoDto;
@@ -44,7 +45,8 @@ public final class JornadaDtos {
     public record JornadaDetalleDto(JornadaDto jornada, List<PartidoDto> partidos) {
     }
 
-    public record ListaJornadasDto(Integer idTemporada, String temporada, List<JornadaDto> jornadas) {
+    /** estadoTemporada: proximo | en_curso | finalizado (en un torneo finalizado no se crean jornadas). */
+    public record ListaJornadasDto(Integer idTemporada, String temporada, String estadoTemporada, List<JornadaDto> jornadas) {
     }
 
     public record PartidoDto(
@@ -59,13 +61,20 @@ public final class JornadaDtos {
             String estado) {
     }
 
+    /** idTemporada: torneo al que pertenece; si no viene, el torneo en curso. */
     public record CrearJornadaRequest(
+            Integer idTemporada,
             @Size(max = 100, message = "Máximo 100 caracteres") String nombre,
             @NotNull(message = "Indica el precio por quiniela")
             @DecimalMin(value = "1", message = "El precio mínimo es $1")
             @Digits(integer = 8, fraction = 2, message = "Precio inválido") BigDecimal precio,
             @DecimalMin(value = "0", message = "Entre 0 y 100")
             @DecimalMax(value = "100", message = "Entre 0 y 100") BigDecimal pctPremio) {
+    }
+
+    public record NombreRequest(
+            @NotBlank(message = "Escribe el nombre de la jornada")
+            @Size(max = 100, message = "Máximo 100 caracteres") String nombre) {
     }
 
     public record VisibleRequest(@NotNull Boolean visible) {

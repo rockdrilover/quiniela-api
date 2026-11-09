@@ -27,6 +27,7 @@ import mx.quiniela.api.ranking.RankingDtos.FilaDto;
 import mx.quiniela.api.ranking.RankingDtos.JornadaOpcionDto;
 import mx.quiniela.api.ranking.RankingDtos.JornadasRankingDto;
 import mx.quiniela.api.ranking.RankingDtos.RankingDto;
+import mx.quiniela.api.ranking.RankingDtos.TorneoOpcionDto;
 
 /**
  * Pantalla 9: tabla de posiciones de una jornada. Solo cuentan las quinielas con pago validado
@@ -50,18 +51,37 @@ public class RankingService {
         this.jdbc = jdbc;
     }
 
+    /**
+     * Torneos con al menos una jornada publicada y las jornadas del elegido. Sin idTorneo se elige el de la
+     * jornada vigente, luego el torneo en curso y si no, el más reciente con jornadas.
+     */
     @Transactional(readOnly = true)
-    public JornadasRankingDto jornadas() {
-        List<JornadaOpcionDto> lista = temporadas.findFirstByActivaTrueOrderByIdDesc()
-                .map(t -> jornadas.findByIdTemporadaAndVisibleTrueOrderByNumeroDesc(t.getId()).stream()
+    public JornadasRankingDto jornadas(Integer idTorneo) {
+        List<TorneoOpcionDto> torneos = jdbc.query("""
+                SELECT t.id_temporada, t.nombre, t.estado FROM temporadas t
+                WHERE EXISTS (SELECT 1 FROM jornadas j WHERE j.id_temporada = t.id_temporada
+                              AND j.visible AND j.estado <> 'borrador')
+                ORDER BY (t.estado = 'en_curso') DESC, t.id_temporada DESC
+                """, new MapSqlParameterSource(),
+                (rs, i) -> new TorneoOpcionDto(rs.getInt("id_temporada"), rs.getString("nombre"), rs.getString("estado")));
+
+        Integer actual = quinielas.jornadaActual().map(d -> d.jornada().id()).orElse(null);
+        Integer elegido = idTorneo;
+        if (elegido == null && actual != null) elegido = jornadas.findById(actual).map(Jornada::getIdTemporada).orElse(null);
+        if (elegido == null) elegido = temporadas.enCurso().map(t -> t.getId()).orElse(null);
+        Integer buscado = elegido;
+        if (buscado == null || torneos.stream().noneMatch(t -> t.id().equals(buscado))) {
+            elegido = idTorneo != null ? idTorneo : torneos.stream().findFirst().map(TorneoOpcionDto::id).orElse(null);
+        }
+
+        List<JornadaOpcionDto> lista = elegido == null ? List.of()
+                : jornadas.findByIdTemporadaAndVisibleTrueOrderByNumeroDesc(elegido).stream()
                         .filter(j -> j.getEstado() != EstadoJornada.borrador)
                         .map(j -> {
                             JornadaDetalleDto d = vistas.detalle(j);
                             return new JornadaOpcionDto(j.getId(), j.getNumero(), j.getNombre(), d.jornada().estadoVisual());
-                        }).toList())
-                .orElse(List.of());
-        Integer actual = quinielas.jornadaActual().map(d -> d.jornada().id()).orElse(null);
-        return new JornadasRankingDto(actual, lista);
+                        }).toList();
+        return new JornadasRankingDto(actual, elegido, torneos, lista);
     }
 
     @Transactional(readOnly = true)

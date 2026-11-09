@@ -62,9 +62,12 @@ public class JornadasAdminService {
 
     // ================================================================ consultas
 
+    /** Jornadas de un torneo; sin idTemporada, las del torneo en curso (o el más reciente si no hay ninguno en curso). */
     @Transactional(readOnly = true)
-    public ListaJornadasDto listar() {
-        Temporada t = temporadaActiva();
+    public ListaJornadasDto listar(Integer idTemporada) {
+        Temporada t = idTemporada != null ? buscarTemporada(idTemporada)
+                : temporadas.enCurso().or(() -> temporadas.findAllByOrderByIdDesc().stream().findFirst())
+                        .orElseThrow(() -> conflicto("SIN_TEMPORADA", "Primero crea un torneo"));
         List<Jornada> lista = jornadas.findByIdTemporadaOrderByNumeroDesc(t.getId());
         Map<Integer, List<Partido>> porJornada = partidos.findByIdJornadaIn(lista.stream().map(Jornada::getId).toList())
                 .stream().collect(Collectors.groupingBy(Partido::getIdJornada));
@@ -72,7 +75,7 @@ public class JornadasAdminService {
         List<JornadaDto> dtos = lista.stream()
                 .map(j -> aDto(j, porJornada.getOrDefault(j.getId(), List.of()), ahora))
                 .toList();
-        return new ListaJornadasDto(t.getId(), t.getNombre(), dtos);
+        return new ListaJornadasDto(t.getId(), t.getNombre(), t.getEstado().name(), dtos);
     }
 
     @Transactional(readOnly = true)
@@ -82,15 +85,33 @@ public class JornadasAdminService {
 
     // ================================================================ jornadas
 
+    /** En el torneo indicado (o el en curso). Un torneo finalizado ya no acepta jornadas. */
     @Transactional
-    public JornadaDetalleDto crear(Integer idAdmin, String nombre, BigDecimal precio, BigDecimal pctPremio) {
-        Temporada t = temporadaActiva();
+    public JornadaDetalleDto crear(Integer idAdmin, Integer idTemporada, String nombre, BigDecimal precio, BigDecimal pctPremio) {
+        Temporada t = idTemporada != null ? buscarTemporada(idTemporada) : temporadaActiva();
+        if (t.finalizado()) {
+            throw conflicto("TORNEO_FINALIZADO", "El torneo \"" + t.getNombre() + "\" ya está finalizado: no acepta jornadas nuevas");
+        }
         int numero = jornadas.maxNumero(t.getId()) + 1;
         String n = (nombre == null || nombre.isBlank()) ? "Jornada " + numero : nombre.trim();
         Jornada j = jornadas.saveAndFlush(new Jornada(t.getId(), numero, n, precio,
                 pctPremio != null ? pctPremio : PCT_PREMIO_DEFAULT));
         bitacora.registrar(idAdmin, "CREAR_JORNADA", "jornadas", j.getId(), null,
                 Map.of("numero", numero, "nombre", n, "precio", precio));
+        return detalleDe(j);
+    }
+
+    /** Cambiar el nombre se permite en cualquier estado: es solo cómo se muestra. */
+    @Transactional
+    public JornadaDetalleDto renombrar(Integer idAdmin, Integer idJornada, String nombre) {
+        Jornada j = buscarJornada(idJornada);
+        String antes = j.getNombre();
+        String n = nombre.trim();
+        if (!antes.equals(n)) {
+            j.setNombre(n);
+            jornadas.flush();
+            bitacora.registrar(idAdmin, "RENOMBRAR_JORNADA", "jornadas", j.getId(), Map.of("nombre", antes), Map.of("nombre", n));
+        }
         return detalleDe(j);
     }
 
@@ -139,6 +160,12 @@ public class JornadasAdminService {
         }
         if (jornadas.contarOtrasAbiertas(j.getId()) > 0) {
             throw conflicto("OTRA_ABIERTA", "Ya hay otra jornada abierta. Ciérrala antes de abrir esta");
+        }
+        Temporada t = buscarTemporada(j.getIdTemporada());
+        if (!t.enCurso()) {
+            throw conflicto("TORNEO_NO_EN_CURSO", t.finalizado()
+                    ? "El torneo \"" + t.getNombre() + "\" ya está finalizado"
+                    : "El torneo \"" + t.getNombre() + "\" todavía no inicia. Inícialo en Torneos para abrir sus jornadas");
         }
         String antes = j.getEstado().name();
         j.setEstado(EstadoJornada.abierta);
@@ -324,8 +351,13 @@ public class JornadasAdminService {
     }
 
     private Temporada temporadaActiva() {
-        return temporadas.findFirstByActivaTrueOrderByIdDesc()
-                .orElseThrow(() -> conflicto("SIN_TEMPORADA", "No hay una temporada activa"));
+        return temporadas.enCurso()
+                .orElseThrow(() -> conflicto("SIN_TEMPORADA", "No hay un torneo en curso. Créalo o inícialo en Torneos"));
+    }
+
+    private Temporada buscarTemporada(Integer id) {
+        return temporadas.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NO_ENCONTRADO", "El torneo no existe"));
     }
 
     private Jornada buscarJornada(Integer id) {

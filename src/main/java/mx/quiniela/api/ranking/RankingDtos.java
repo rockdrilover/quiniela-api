@@ -16,7 +16,11 @@ public final class RankingDtos {
     public record JornadaOpcionDto(Integer id, int numero, String nombre, EstadoVisual estadoVisual) {
     }
 
-    public record JornadasRankingDto(Integer actual, List<JornadaOpcionDto> jornadas) {
+    public record TorneoOpcionDto(Integer id, String nombre, String estado) {
+    }
+
+    /** Torneos con jornadas publicadas, el elegido (idTorneo), sus jornadas y cuál es la vigente (actual). */
+    public record JornadasRankingDto(Integer actual, Integer idTorneo, List<TorneoOpcionDto> torneos, List<JornadaOpcionDto> jornadas) {
     }
 
     public record BolsaDto(int participantes, BigDecimal recaudado, BigDecimal bolsa) {
