@@ -109,7 +109,7 @@ public class RankingService {
                 });
 
         List<FilaDto> filas = jdbc.query("""
-                SELECT r.posicion, r.id_quiniela, r.folio, r.numero_en_jornada, r.id_usuario, r.username::text AS username,
+                SELECT r.posicion, r.id_quiniela, r.folio, r.numero_en_jornada, r.id_usuario, r.username::text AS username, r.avatar_url,
                        r.puntos, r.exactos,
                        COUNT(*) OVER (PARTITION BY r.id_usuario) > 1 AS varias
                 FROM v_ranking_jornada r
@@ -119,7 +119,7 @@ public class RankingService {
                     int idQ = rs.getInt("id_quiniela");
                     int pos = rs.getInt("posicion");
                     return new FilaDto(pos, idQ, rs.getInt("folio"), rs.getInt("numero_en_jornada"),
-                            rs.getInt("id_usuario"), rs.getString("username"), rs.getBoolean("varias"),
+                            rs.getInt("id_usuario"), rs.getString("username"), rs.getString("avatar_url"), rs.getBoolean("varias"),
                             rs.getInt("puntos"), rs.getInt("exactos"), idUsuario.equals(rs.getInt("id_usuario")),
                             premios.containsKey(idQ), premios.get(idQ), celdas.getOrDefault(idQ, List.of()));
                 });

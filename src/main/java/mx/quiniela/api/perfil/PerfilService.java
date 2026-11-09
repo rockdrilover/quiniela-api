@@ -73,7 +73,7 @@ public class PerfilService {
                         rs.getBigDecimal("premio") != null, rs.getBigDecimal("premio")));
 
         DatosUsuarioDto datos = new DatosUsuarioDto(u.getId(), u.getUsername(), u.getNombre(), u.getCorreo(),
-                u.getRol().name(), u.getEstado().name(), u.getFechaRegistro(), u.getUltimoLogin());
+                u.getRol().name(), u.getEstado().name(), u.getFechaRegistro(), u.getUltimoLogin(), u.getAvatarUrl());
         return new PerfilDto(datos, stats, historial);
     }
 

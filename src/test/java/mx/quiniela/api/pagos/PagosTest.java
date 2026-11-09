@@ -197,6 +197,65 @@ class PagosTest {
         assertThat(jdbc.queryForObject("SELECT visto_at IS NULL FROM comprobantes", Boolean.class)).isTrue();
     }
 
+    @Test
+    void pagoManualSinComprobante() throws Exception {
+        int borrador = crearQuiniela(ana, false);
+
+        // Aparece en "por cobrar" aunque no haya subido nada (el borrador no)
+        mvc.perform(como(admin, get("/api/admin/pagos"))).andExpect(jsonPath("$.conteos.por_cobrar").value(1));
+        mvc.perform(como(admin, get("/api/admin/pagos/por-cobrar?idJornada=" + jornada))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].quiniela.id").value(quiniela))
+                .andExpect(jsonPath("$[0].usuario.username").value("ana"));
+
+        mvc.perform(como(ana, post("/api/admin/quinielas/" + quiniela + "/pago-manual"))).andExpect(status().isForbidden());
+        mvc.perform(como(admin, post("/api/admin/quinielas/" + borrador + "/pago-manual"))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("ESTADO_INVALIDO"));
+
+        mvc.perform(como(admin, post("/api/admin/quinielas/" + quiniela + "/pago-manual"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"nota\":\"Efectivo\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tipo").value("manual"))
+                .andExpect(jsonPath("$.estado").value("aprobado"))
+                .andExpect(jsonPath("$.nota").value("Efectivo"))
+                .andExpect(jsonPath("$.quiniela.estado").value("participando"));
+        mvc.perform(como(admin, post("/api/admin/quinielas/" + quiniela + "/pago-manual"))).andExpect(status().isConflict());
+
+        // La dueña lo ve como pagado, sin archivo que abrir ni subir
+        mvc.perform(como(ana, get("/api/quinielas/" + quiniela)))
+                .andExpect(jsonPath("$.quiniela.estado").value("participando"))
+                .andExpect(jsonPath("$.pago.puedeSubir").value(false))
+                .andExpect(jsonPath("$.pago.comprobante.tipo").value("manual"));
+        mvc.perform(como(ana, get("/api/quinielas/" + quiniela + "/comprobante"))).andExpect(status().isNotFound());
+
+        mvc.perform(como(admin, get("/api/admin/pagos?estado=aprobado")))
+                .andExpect(jsonPath("$.conteos.por_cobrar").value(0))
+                .andExpect(jsonPath("$.elementos[0].tipo").value("manual"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM v_ranking_jornada", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForList("SELECT accion FROM bitacora_admin WHERE entidad = 'comprobantes'", String.class))
+                .containsExactly("PAGO_MANUAL");
+        verify(correo).enviarPagoValidado(eq("ana@quiniela.mx"), anyString(), anyString(), eq(1), anyInt());
+    }
+
+    @Test
+    void pagoManualDespuesDeRechazoYConComprobanteEnRevision() throws Exception {
+        subir(ana, quiniela, "ticket.png", PNG).andExpect(status().isOk());
+        // Con un comprobante en revisión el admin debe revisarlo, no registrar otro pago
+        mvc.perform(como(admin, post("/api/admin/quinielas/" + quiniela + "/pago-manual"))).andExpect(status().isConflict());
+
+        int idC = jdbc.queryForObject("SELECT id_comprobante FROM comprobantes", Integer.class);
+        mvc.perform(como(admin, get("/api/admin/pagos/" + idC + "/archivo"))).andExpect(status().isOk());
+        mvc.perform(como(admin, put("/api/admin/pagos/" + idC + "/rechazar")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"motivo\":\"Monto incompleto\"}")).andExpect(status().isOk());
+
+        mvc.perform(como(admin, get("/api/admin/pagos/por-cobrar")))
+                .andExpect(jsonPath("$[0].motivoRechazo").value("Monto incompleto"));
+        // Después de jugar los partidos también se puede (pagó en efectivo antes del partido)
+        jdbc.update("UPDATE partidos SET fecha_hora = now() - interval '1 minute'");
+        mvc.perform(como(admin, post("/api/admin/quinielas/" + quiniela + "/pago-manual"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quiniela.estado").value("participando"));
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private ResultActions subir(String token, int idQuiniela, String nombre, byte[] datos) throws Exception {

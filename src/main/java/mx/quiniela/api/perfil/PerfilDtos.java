@@ -14,7 +14,7 @@ public final class PerfilDtos {
     }
 
     public record DatosUsuarioDto(Integer id, String username, String nombre, String correo, String rol, String estado,
-                                  Instant fechaRegistro, Instant ultimoLogin) {
+                                  Instant fechaRegistro, Instant ultimoLogin, String avatar) {
     }
 
     /** Estadísticas personales (solo quinielas con pago validado). */

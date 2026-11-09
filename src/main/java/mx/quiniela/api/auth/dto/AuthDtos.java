@@ -56,10 +56,11 @@ public final class AuthDtos {
             @NotBlank(message = "Confirma la nueva contraseña") String confirmacion) {
     }
 
-    public record UsuarioDto(Integer id, String username, String nombre, String correo, String rol, String estado) {
+    public record UsuarioDto(Integer id, String username, String nombre, String correo, String rol, String estado,
+                             String avatar) {
         public static UsuarioDto de(Usuario u) {
             return new UsuarioDto(u.getId(), u.getUsername(), u.getNombre(), u.getCorreo(),
-                    u.getRol().name(), u.getEstado().name());
+                    u.getRol().name(), u.getEstado().name(), u.getAvatarUrl());
         }
     }
 

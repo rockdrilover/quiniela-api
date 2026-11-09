@@ -32,6 +32,7 @@ public final class RankingDtos {
             int numero,
             Integer idUsuario,
             String username,
+            String avatar,
             /** El usuario tiene más de una quiniela pagada en esta jornada (para mostrar "Q2"). */
             boolean variasQuinielas,
             int puntos,

@@ -62,6 +62,12 @@ Cada acción queda en `bitacora_admin`. Un usuario no admin recibe 403.
 |---|---|---|
 | GET | `/api/perfil` | `{usuario, estadisticas: {quinielasJugadas, puntosTotales, exactosTotales, quinielasGanadas, premiosGanados}, historial[]}` (solo quinielas con pago validado) |
 | PUT | `/api/perfil` | `{nombre}` — el usuario solo cambia su nombre; correo lo cambia el admin |
+| POST | `/api/perfil/avatar` | multipart, campo `archivo` (JPG/PNG/WEBP, máx. 2 MB) → perfil |
+| PUT | `/api/perfil/avatar` | `{preset}`: `balon`, `trofeo`, `estrella`, `rayo`, `fuego`, `escudo`, `cohete`, `medalla` |
+| DELETE | `/api/perfil/avatar` | Vuelve a las iniciales |
+| GET | `/api/avatares/{yyyy}/{MM}/{archivo}` | **Público** (para `<img>`); nombre aleatorio, caché larga |
+
+`usuario.avatar` (en la sesión, el perfil, el ranking, pagos y usuarios admin) es `"/api/avatares/..."`, `"preset:<nombre>"` o `null` (el front muestra las iniciales). Al cambiar de foto, la anterior se borra del disco.
 
 El cambio de contraseña es `PUT /api/auth/password` (arriba).
 
@@ -115,8 +121,12 @@ Archivos: JPG, PNG, WEBP o PDF, máx. 10 MB. El tipo se detecta por el contenido
 | GET | `/api/admin/pagos/{id}/archivo` | Visor; lo marca como visto |
 | PUT | `/api/admin/pagos/{id}/aprobar` | 409 `SIN_VER` si no se ha abierto · 409 `YA_REVISADO` |
 | PUT | `/api/admin/pagos/{id}/rechazar` | `{motivo}` (3 a 255 caracteres) |
+| GET | `/api/admin/pagos/por-cobrar` | Quinielas enviadas sin pago (`pendiente_pago`/`rechazada`) de jornadas no finalizadas; opcional `idJornada` |
+| POST | `/api/admin/quinielas/{id}/pago-manual` | `{nota?}` — pago en efectivo o por fuera: crea un pago `tipo: manual` ya aprobado y la quiniela pasa a `participando` · 409 `ESTADO_INVALIDO` (borrador, ya pagada o con comprobante en revisión) / `JORNADA_FINALIZADA` |
 
-`GET /api/quinielas/{id}` incluye `pago: {puedeSubir, comprobante: {estado, subidoAt, mimeType, motivoRechazo}}`. Validar y rechazar quedan en `bitacora_admin` (`VALIDAR_PAGO`, `RECHAZAR_PAGO`).
+**Pago manual:** el comprobante es opcional. Si el jugador le paga al admin en persona, el admin lo registra desde "Por cobrar" (se permite aun después del cierre, hasta finalizar la jornada). Queda en la bitácora como `PAGO_MANUAL` y el jugador recibe el correo de pago validado. `conteos` incluye `por_cobrar`.
+
+`GET /api/quinielas/{id}` incluye `pago: {puedeSubir, comprobante: {tipo, estado, subidoAt, mimeType, motivoRechazo}}` (`tipo`: `comprobante` | `manual`). Validar y rechazar quedan en `bitacora_admin` (`VALIDAR_PAGO`, `RECHAZAR_PAGO`).
 
 ## Ranking (cualquier usuario con sesión)
 

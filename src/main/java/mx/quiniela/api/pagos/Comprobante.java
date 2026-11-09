@@ -27,14 +27,23 @@ public class Comprobante {
     @Column(name = "id_quiniela", nullable = false, updatable = false)
     private Integer idQuiniela;
 
-    @Column(name = "archivo_key", nullable = false, updatable = false, length = 500)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false, length = 20)
+    private TipoPago tipo = TipoPago.comprobante;
+
+    /** Solo en comprobantes con archivo; null en pagos manuales. */
+    @Column(name = "archivo_key", updatable = false, length = 500)
     private String archivoKey;
 
-    @Column(name = "mime_type", nullable = false, updatable = false, length = 50)
+    @Column(name = "mime_type", updatable = false, length = 50)
     private String mimeType;
 
-    @Column(name = "tamano_bytes", nullable = false, updatable = false)
-    private int tamanoBytes;
+    @Column(name = "tamano_bytes", updatable = false)
+    private Integer tamanoBytes;
+
+    /** Nota del admin en pagos manuales ("efectivo", "transferencia"...). */
+    @Column(length = 255)
+    private String nota;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
@@ -70,6 +79,16 @@ public class Comprobante {
         this.tamanoBytes = tamanoBytes;
     }
 
+    /** El admin registra un pago recibido fuera de la app: nace aprobado y sin archivo. */
+    public static Comprobante manual(Integer idQuiniela, Integer idAdmin, Instant ahora, String nota) {
+        Comprobante c = new Comprobante();
+        c.idQuiniela = idQuiniela;
+        c.tipo = TipoPago.manual;
+        c.nota = nota;
+        c.aprobar(idAdmin, ahora);
+        return c;
+    }
+
     /** El admin abrió el archivo: a partir de aquí puede validarlo (regla de no validar a ciegas). */
     public boolean marcarVisto(Integer idAdmin, Instant ahora) {
         if (vistoAt != null) return false;
@@ -95,7 +114,10 @@ public class Comprobante {
     public Integer getIdQuiniela() { return idQuiniela; }
     public String getArchivoKey() { return archivoKey; }
     public String getMimeType() { return mimeType; }
-    public int getTamanoBytes() { return tamanoBytes; }
+    public Integer getTamanoBytes() { return tamanoBytes; }
+    public TipoPago getTipo() { return tipo; }
+    public boolean esManual() { return tipo == TipoPago.manual; }
+    public String getNota() { return nota; }
     public EstadoComprobante getEstado() { return estado; }
     public Instant getSubidoAt() { return subidoAt; }
     public Instant getVistoAt() { return vistoAt; }

@@ -24,8 +24,13 @@ public class AlmacenArchivos {
     }
 
     public String guardar(byte[] datos, String extension) {
+        return guardar("comprobantes", datos, extension);
+    }
+
+    /** Guarda en carpeta/yyyy/MM/uuid.ext y devuelve esa clave. */
+    public String guardar(String carpeta, byte[] datos, String extension) {
         LocalDate hoy = LocalDate.now();
-        String clave = "comprobantes/%d/%02d/%s.%s".formatted(hoy.getYear(), hoy.getMonthValue(), UUID.randomUUID(), extension);
+        String clave = "%s/%d/%02d/%s.%s".formatted(carpeta, hoy.getYear(), hoy.getMonthValue(), UUID.randomUUID(), extension);
         Path destino = resolver(clave);
         try {
             Files.createDirectories(destino.getParent());

@@ -38,10 +38,11 @@ public class AdminUsuariosController {
     }
 
     public record UsuarioAdminDto(Integer id, String username, String nombre, String correo, String rol,
-                                  String estado, Instant fechaRegistro, Instant aprobadoAt, Instant ultimoLogin) {
+                                  String estado, Instant fechaRegistro, Instant aprobadoAt, Instant ultimoLogin,
+                                  String avatar) {
         static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getUsername(), u.getNombre(), u.getCorreo(), u.getRol().name(),
-                    u.getEstado().name(), u.getFechaRegistro(), u.getAprobadoAt(), u.getUltimoLogin());
+                    u.getEstado().name(), u.getFechaRegistro(), u.getAprobadoAt(), u.getUltimoLogin(), u.getAvatarUrl());
         }
     }
 

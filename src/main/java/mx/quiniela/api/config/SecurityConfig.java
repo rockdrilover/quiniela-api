@@ -58,6 +58,7 @@ public class SecurityConfig {
                         "/api/auth/recuperar",
                         "/api/auth/recuperar/verificar",
                         "/api/auth/recuperar/restablecer").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/avatares/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter())));

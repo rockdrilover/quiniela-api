@@ -1,5 +1,7 @@
 package mx.quiniela.api.pagos;
 
+import java.util.List;
+
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -22,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.validation.Valid;
 import mx.quiniela.api.pagos.PagoDtos.ComprobanteAdminDto;
 import mx.quiniela.api.pagos.PagoDtos.ListaPagosDto;
+import mx.quiniela.api.pagos.PagoDtos.PagoManualRequest;
+import mx.quiniela.api.pagos.PagoDtos.PorCobrarDto;
 import mx.quiniela.api.pagos.PagoDtos.RechazoRequest;
 import mx.quiniela.api.pagos.PagosService.Archivo;
 import mx.quiniela.api.quinielas.QuinielaDtos.QuinielaDetalleDto;
@@ -61,6 +65,21 @@ public class PagosController {
     public ListaPagosDto listar(@RequestParam(defaultValue = "en_revision") EstadoComprobante estado,
                                 @RequestParam(required = false) Integer idJornada) {
         return pagos.listar(estado, idJornada);
+    }
+
+    /** Quinielas enviadas que esperan pago: el admin puede registrar un pago recibido por fuera. */
+    @GetMapping("/admin/pagos/por-cobrar")
+    @PreAuthorize("hasRole('admin')")
+    public List<PorCobrarDto> porCobrar(@RequestParam(required = false) Integer idJornada) {
+        return pagos.porCobrar(idJornada);
+    }
+
+    /** Pago en efectivo / por fuera: la quiniela pasa a participando sin comprobante. */
+    @PostMapping("/admin/quinielas/{id}/pago-manual")
+    @PreAuthorize("hasRole('admin')")
+    public ComprobanteAdminDto pagoManual(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id,
+                                          @Valid @RequestBody(required = false) PagoManualRequest req) {
+        return pagos.registrarManual(usuario(jwt), id, req == null ? null : req.nota());
     }
 
     /** Visor de comprobantes: abrirlo lo marca como visto. */

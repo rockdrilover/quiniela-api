@@ -32,6 +32,10 @@ public class Usuario {
     @Column(columnDefinition = "citext", nullable = false)
     private String correo;
 
+    /** "preset:<nombre>" (avatar predefinido) o "/api/avatares/<archivo>" (foto subida). null = iniciales. */
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
@@ -128,6 +132,8 @@ public class Usuario {
     public void setUltimoLogin(Instant ultimoLogin) { this.ultimoLogin = ultimoLogin; }
     public void setNombre(String nombre) { this.nombre = nombre; }
     public void setCorreo(String correo) { this.correo = correo; }
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
 
     /** Borrado lógico: ya no puede entrar, pero sus quinielas e historial se conservan. */
     public void eliminar(Instant ahora) {

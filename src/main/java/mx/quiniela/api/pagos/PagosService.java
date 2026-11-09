@@ -30,6 +30,7 @@ import mx.quiniela.api.pagos.PagoDtos.ComprobanteDto;
 import mx.quiniela.api.pagos.PagoDtos.JornadaRef;
 import mx.quiniela.api.pagos.PagoDtos.ListaPagosDto;
 import mx.quiniela.api.pagos.PagoDtos.PagoDto;
+import mx.quiniela.api.pagos.PagoDtos.PorCobrarDto;
 import mx.quiniela.api.pagos.PagoDtos.QuinielaRef;
 import mx.quiniela.api.pagos.PagoDtos.UsuarioRef;
 import mx.quiniela.api.quinielas.Quiniela;
@@ -132,6 +133,7 @@ public class PagosService {
         Quiniela q = quinielas.findById(idQuiniela).filter(x -> esAdmin || x.getIdUsuario().equals(idUsuario))
                 .orElseThrow(PagosService::quinielaNoEncontrada);
         Comprobante c = comprobantes.findFirstByIdQuinielaOrderByIdDesc(q.getId())
+                .filter(x -> !x.esManual())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NO_ENCONTRADO", "Esta quiniela no tiene comprobante"));
         return archivoDe(c);
     }
@@ -149,6 +151,7 @@ public class PagosService {
                 rs -> {
                     conteos.put(rs.getString("estado"), rs.getLong("n"));
                 });
+        conteos.put("por_cobrar", jdbc.queryForObject("SELECT COUNT(*) FROM quinielas q " + WHERE_POR_COBRAR, p, Long.class));
         p.addValue("estado", estado.name());
         String orden = estado == EstadoComprobante.en_revision ? "c.subido_at ASC" : "COALESCE(c.revisado_at, c.subido_at) DESC";
         List<ComprobanteAdminDto> filas = jdbc.query(SELECT_ADMIN + """
@@ -158,10 +161,71 @@ public class PagosService {
         return new ListaPagosDto(conteos, filas);
     }
 
+    /** Quinielas enviadas que esperan pago (sin comprobante o con el último rechazado). */
+    @Transactional(readOnly = true)
+    public List<PorCobrarDto> porCobrar(Integer idJornada) {
+        return jdbc.query("""
+                SELECT q.id_quiniela, q.folio, q.numero_en_jornada, q.estado::text AS estado_quiniela, q.monto,
+                       q.enviada_at, u.id_usuario, u.username::text AS username, u.nombre, u.avatar_url,
+                       j.id_jornada, j.nombre AS jornada,
+                       (SELECT c.motivo_rechazo FROM comprobantes c WHERE c.id_quiniela = q.id_quiniela
+                        ORDER BY c.id_comprobante DESC LIMIT 1) AS motivo_rechazo
+                FROM quinielas q
+                JOIN usuarios u ON u.id_usuario = q.id_usuario
+                JOIN jornadas j ON j.id_jornada = q.id_jornada
+                """ + WHERE_POR_COBRAR + " ORDER BY q.enviada_at ASC LIMIT 300",
+                new MapSqlParameterSource("j", idJornada),
+                (rs, i) -> new PorCobrarDto(
+                        new QuinielaRef(rs.getInt("id_quiniela"), rs.getInt("folio"), rs.getInt("numero_en_jornada"),
+                                rs.getString("estado_quiniela"), rs.getBigDecimal("monto")),
+                        new UsuarioRef(rs.getInt("id_usuario"), rs.getString("username"), rs.getString("nombre"),
+                        rs.getString("avatar_url")),
+                        new JornadaRef(rs.getInt("id_jornada"), rs.getString("jornada")),
+                        instante(rs, "enviada_at"), rs.getString("motivo_rechazo")));
+    }
+
+    /**
+     * El usuario le pagó al admin por fuera (efectivo, transferencia sin comprobante): el admin lo
+     * registra y la quiniela pasa directo a "participando". Queda en la bitácora y se avisa por correo.
+     */
+    @Transactional
+    public ComprobanteAdminDto registrarManual(Integer idAdmin, Integer idQuiniela, String nota) {
+        Quiniela q = quinielas.findById(idQuiniela).orElseThrow(PagosService::quinielaNoEncontrada);
+        if (!q.puedeSubirPago()) {
+            throw conflicto("ESTADO_INVALIDO", switch (q.getEstado()) {
+                case borrador -> "La quiniela todavía no se envía";
+                case en_revision -> "Esta quiniela tiene un comprobante en revisión: ábrelo y valídalo";
+                case participando -> "El pago de esta quiniela ya está registrado";
+                default -> "Esta quiniela no acepta pagos";
+            });
+        }
+        Jornada j = jornadas.findById(q.getIdJornada()).orElseThrow();
+        if (j.getEstado() == EstadoJornada.finalizada) {
+            throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; su ranking es definitivo");
+        }
+        Instant ahora = clock.instant();
+        String n = nota == null || nota.isBlank() ? null : nota.trim();
+        String antes = q.getEstado().name();
+        Comprobante c = comprobantes.save(Comprobante.manual(q.getId(), idAdmin, ahora, n));
+        q.pagoAprobado(ahora);
+        comprobantes.flush();
+        Map<String, Object> despues = new LinkedHashMap<>();
+        despues.put("estado", "participando");
+        despues.put("folio", q.getFolio());
+        if (n != null) despues.put("nota", n);
+        bitacora.registrar(idAdmin, "PAGO_MANUAL", "comprobantes", c.getId(),
+                Map.of("estado", antes), despues);
+        avisar(q, true, null);
+        return fila(c.getId());
+    }
+
     /** Abrir el archivo lo marca como "visto": requisito para poder validarlo. */
     @Transactional
     public Archivo archivoAdmin(Integer idAdmin, Integer idComprobante) {
         Comprobante c = buscar(idComprobante);
+        if (c.esManual()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_ENCONTRADO", "Este pago se registró a mano: no tiene archivo");
+        }
         c.marcarVisto(idAdmin, clock.instant());
         return archivoDe(c);
     }
@@ -255,11 +319,18 @@ public class PagosService {
                 new MapSqlParameterSource("id", id), PagosService::filaAdmin);
     }
 
+    /** Enviadas sin pago en revisión ni aprobado (requiere el parámetro :j, puede ser null). */
+    private static final String WHERE_POR_COBRAR = """
+            WHERE q.estado IN ('pendiente_pago', 'rechazada')
+              AND (CAST(:j AS int) IS NULL OR q.id_jornada = :j)
+              AND q.id_jornada IN (SELECT id_jornada FROM jornadas WHERE estado <> 'finalizada')
+            """;
+
     private static final String SELECT_ADMIN = """
-            SELECT c.id_comprobante, c.estado::text AS estado, c.subido_at, c.mime_type, c.tamano_bytes,
-                   c.visto_at, c.revisado_at, c.motivo_rechazo,
+            SELECT c.id_comprobante, c.tipo, c.estado::text AS estado, c.subido_at, c.mime_type, c.tamano_bytes,
+                   c.visto_at, c.revisado_at, c.motivo_rechazo, c.nota,
                    q.id_quiniela, q.folio, q.numero_en_jornada, q.estado::text AS estado_quiniela, q.monto,
-                   u.id_usuario, u.username::text AS username, u.nombre,
+                   u.id_usuario, u.username::text AS username, u.nombre, u.avatar_url,
                    j.id_jornada, j.nombre AS jornada
             FROM comprobantes c
             JOIN quinielas q ON q.id_quiniela = c.id_quiniela
@@ -269,12 +340,13 @@ public class PagosService {
 
     private static ComprobanteAdminDto filaAdmin(ResultSet rs, int i) throws SQLException {
         return new ComprobanteAdminDto(
-                rs.getInt("id_comprobante"), rs.getString("estado"), instante(rs, "subido_at"),
-                rs.getString("mime_type"), rs.getInt("tamano_bytes"), rs.getTimestamp("visto_at") != null,
-                instante(rs, "revisado_at"), rs.getString("motivo_rechazo"),
+                rs.getInt("id_comprobante"), rs.getString("tipo"), rs.getString("estado"), instante(rs, "subido_at"),
+                rs.getString("mime_type"), rs.getObject("tamano_bytes", Integer.class), rs.getTimestamp("visto_at") != null,
+                instante(rs, "revisado_at"), rs.getString("motivo_rechazo"), rs.getString("nota"),
                 new QuinielaRef(rs.getInt("id_quiniela"), rs.getInt("folio"), rs.getInt("numero_en_jornada"),
                         rs.getString("estado_quiniela"), rs.getBigDecimal("monto")),
-                new UsuarioRef(rs.getInt("id_usuario"), rs.getString("username"), rs.getString("nombre")),
+                new UsuarioRef(rs.getInt("id_usuario"), rs.getString("username"), rs.getString("nombre"),
+                        rs.getString("avatar_url")),
                 new JornadaRef(rs.getInt("id_jornada"), rs.getString("jornada")));
     }
 
