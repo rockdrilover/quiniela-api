@@ -76,7 +76,7 @@ class PerfilTest {
 
         mvc.perform(como(ana, get("/api/perfil"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.estadisticas.quinielasJugadas").value(1))
-                .andExpect(jsonPath("$.estadisticas.puntosTotales").value(3))
+                .andExpect(jsonPath("$.estadisticas.puntosTotales").value(1))
                 .andExpect(jsonPath("$.estadisticas.exactosTotales").value(1))
                 .andExpect(jsonPath("$.estadisticas.quinielasGanadas").value(1))
                 .andExpect(jsonPath("$.estadisticas.premiosGanados").value(80.0))
@@ -136,7 +136,7 @@ class PerfilTest {
 
     // ---------------------------------------------------------------- helpers
 
-    /** Jornada con 1 partido: ana exacto (3), beto falla; ambos pagados; se finaliza. */
+    /** Jornada con 1 partido: ana exacto (1), beto falla; ambos pagados; se finaliza. */
     private void jornadaGanadaPorAna() throws Exception {
         int eq1 = jdbc.queryForObject("SELECT MIN(id_equipo) FROM equipos", Integer.class);
         int j = JsonPath.read(mvc.perform(como(admin, post("/api/admin/jornadas")).contentType(MediaType.APPLICATION_JSON)

@@ -100,24 +100,26 @@ class RankingTest {
     @Test
     void conMarcadoresOrdenaPorPuntosYAlFinalizarRepartePremio() throws Exception {
         mvc.perform(como(admin, post("/api/admin/jornadas/" + jornada + "/cerrar"))).andExpect(status().isOk());
-        resultado(partidos.get(0), 2, 1); // ana exacto (3), beto tendencia (1)
-        resultado(partidos.get(1), 1, 1); // ana tendencia (1), beto exacto (3)
+        resultado(partidos.get(0), 2, 1); // ana exacto (1), beto resultado (1)
+        resultado(partidos.get(1), 1, 1); // ana resultado (1), beto exacto (1)
 
         mvc.perform(como(beto, get("/api/ranking?idJornada=" + jornada))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.pronosticosVisibles").value(true))
                 .andExpect(jsonPath("$.filas[0].posicion").value(1))
                 .andExpect(jsonPath("$.filas[1].posicion").value(1)) // empate: comparten lugar
-                .andExpect(jsonPath("$.filas[0].puntos").value(4))
+                .andExpect(jsonPath("$.filas[0].puntos").value(2))
                 .andExpect(jsonPath("$.filas[0].exactos").value(1))
                 .andExpect(jsonPath("$.filas[?(@.username == 'ana')].pronosticos.length()").value(2))
                 .andExpect(jsonPath("$.filas[0].ganador").value(false)); // aún no finaliza
 
-        resultado(partidos.get(1), 0, 0); // corrección: ana exacto (3) → 6; beto tendencia (1) → 2
+        resultado(partidos.get(1), 0, 0); // corrección: ana exacto (1) → 2 y 2 exactos; beto resultado (1) → 2 y 0 exactos: gana ana por desempate
         mvc.perform(como(admin, post("/api/admin/jornadas/" + jornada + "/finalizar"))).andExpect(status().isOk());
 
         mvc.perform(como(ana, get("/api/ranking?idJornada=" + jornada)))
                 .andExpect(jsonPath("$.filas[0].username").value("ana"))
-                .andExpect(jsonPath("$.filas[0].puntos").value(6))
+                .andExpect(jsonPath("$.filas[0].puntos").value(2))
+                .andExpect(jsonPath("$.filas[0].exactos").value(2))
+                .andExpect(jsonPath("$.filas[1].puntos").value(2))
                 .andExpect(jsonPath("$.filas[0].ganador").value(true))
                 .andExpect(jsonPath("$.filas[0].premio").value(80.0))
                 .andExpect(jsonPath("$.filas[1].posicion").value(2))

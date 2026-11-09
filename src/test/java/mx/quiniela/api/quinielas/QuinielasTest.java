@@ -183,13 +183,13 @@ class QuinielasTest {
         abrir();
         int id = idQuiniela(crear(ana, true, p(0, 2, 1), p(1, 0, 0), p(2, 1, 3)));
         mvc.perform(como(admin, post("/api/admin/jornadas/" + jornada + "/cerrar"))).andExpect(status().isOk());
-        resultado(partidos.get(0), 2, 1); // exacto → 3
+        resultado(partidos.get(0), 2, 1); // exacto → 1 (ya no vale más que el resultado)
         resultado(partidos.get(1), 1, 1); // empate → 1
 
         mvc.perform(como(ana, get("/api/quinielas/" + id))).andExpect(status().isOk())
-                .andExpect(jsonPath("$.quiniela.puntos").value(4))
+                .andExpect(jsonPath("$.quiniela.puntos").value(2))
                 .andExpect(jsonPath("$.quiniela.exactos").value(1))
-                .andExpect(jsonPath("$.pronosticos[?(@.idPartido == %d)].puntos".formatted(partidos.get(0))).value(3))
+                .andExpect(jsonPath("$.pronosticos[?(@.idPartido == %d)].puntos".formatted(partidos.get(0))).value(1))
                 .andExpect(jsonPath("$.pronosticos[?(@.idPartido == %d)].exacto".formatted(partidos.get(0))).value(true))
                 .andExpect(jsonPath("$.pronosticos[?(@.idPartido == %d)].puntos".formatted(partidos.get(1))).value(1));
         // El tercero sigue sin marcador

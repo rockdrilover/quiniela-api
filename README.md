@@ -130,7 +130,7 @@ Archivos: JPG, PNG, WEBP o PDF, máx. 10 MB. El tipo se detecta por el contenido
 
 ## Ranking (cualquier usuario con sesión)
 
-Solo cuentan las quinielas `participando` (pago validado). Puntos: 3 marcador exacto, 1 resultado (L/E/V), 0 fallo; desempate por número de exactos y, si siguen iguales, comparten lugar. Al finalizar la jornada los de la posición 1 se reparten la bolsa (`v_ganadores_jornada`). **Los pronósticos de los demás no se envían mientras la jornada acepte pronósticos** (para que nadie copie); los propios siempre.
+Solo cuentan las quinielas `participando` (pago validado). Puntos: 1 si le atinas al resultado (L/E/V), sea o no el marcador exacto; 0 si fallas (regla de V4, aplica a todas las jornadas). Desempate por número de exactos y, si siguen iguales, comparten lugar. Al finalizar la jornada los de la posición 1 se reparten la bolsa (`v_ganadores_jornada`). **Los pronósticos de los demás no se envían mientras la jornada acepte pronósticos** (para que nadie copie); los propios siempre.
 
 | Método | Ruta | Notas |
 |---|---|---|
