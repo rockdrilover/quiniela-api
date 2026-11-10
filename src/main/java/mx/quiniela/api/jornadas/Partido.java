@@ -94,6 +94,11 @@ public class Partido {
         this.finalizadoAt = null;
     }
 
+    /** Regresa un partido suspendido a programado (sin marcador). */
+    public void reactivar() {
+        this.estado = EstadoPartido.programado;
+    }
+
     public Integer getId() { return id; }
     public Integer getIdJornada() { return idJornada; }
     public short getOrden() { return orden; }

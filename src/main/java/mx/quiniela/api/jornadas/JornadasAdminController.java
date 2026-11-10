@@ -54,8 +54,9 @@ public class JornadasAdminController {
     }
 
     @PutMapping("/jornadas/{id}")
-    public JornadaDetalleDto editar(@PathVariable Integer id, @Valid @RequestBody CrearJornadaRequest req) {
-        return servicio.editar(id, req.nombre(), req.precio(), req.pctPremio());
+    public JornadaDetalleDto editar(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id,
+                                    @Valid @RequestBody CrearJornadaRequest req) {
+        return servicio.editar(admin(jwt), id, req.nombre(), req.precio(), req.pctPremio());
     }
 
     @PutMapping("/jornadas/{id}/nombre")
@@ -100,8 +101,9 @@ public class JornadasAdminController {
     }
 
     @PutMapping("/partidos/{id}")
-    public JornadaDetalleDto editarPartido(@PathVariable Integer id, @Valid @RequestBody PartidoRequest req) {
-        return servicio.editarPartido(id, req.idLocal(), req.idVisitante(), req.fechaHora());
+    public JornadaDetalleDto editarPartido(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id,
+                                           @Valid @RequestBody PartidoRequest req) {
+        return servicio.editarPartido(admin(jwt), id, req.idLocal(), req.idVisitante(), req.fechaHora());
     }
 
     @DeleteMapping("/partidos/{id}")
@@ -118,6 +120,11 @@ public class JornadasAdminController {
     @PostMapping("/partidos/{id}/suspender")
     public JornadaDetalleDto suspender(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
         return servicio.suspenderPartido(admin(jwt), id);
+    }
+
+    @PostMapping("/partidos/{id}/reactivar")
+    public JornadaDetalleDto reactivar(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return servicio.reactivarPartido(admin(jwt), id);
     }
 
     private static Integer admin(Jwt jwt) {

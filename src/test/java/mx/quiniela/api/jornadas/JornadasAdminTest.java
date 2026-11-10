@@ -68,7 +68,37 @@ class JornadasAdminTest {
     void catalogoDeEquipos() throws Exception {
         mvc.perform(auth(get("/api/equipos"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(18))
-                .andExpect(jsonPath("$[0].abreviatura").isNotEmpty());
+                .andExpect(jsonPath("$[0].abreviatura").isNotEmpty())
+                .andExpect(jsonPath("$[0].urlLogo").value("/equipos/AME.png"));
+    }
+
+    @Test
+    void corregirPartidosYPrecioConLaJornadaActiva() throws Exception {
+        int j = idJornada(crear(50));
+        int p1 = idUltimoPartido(agregar(j, eq.get(0), eq.get(1), enHoras(24)));
+        abrir(j).andExpect(status().isOk());
+
+        // Abierta y sin empezar: se corrigen equipos y fecha
+        editarPartido(p1, eq.get(0), eq.get(2), enHoras(30)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.partidos[0].visitante.id").value(eq.get(2)));
+        // El precio se corrige y las quinielas sin pago toman el nuevo
+        jdbc.update("INSERT INTO quinielas (id_usuario, id_jornada, monto) VALUES (1, ?, 50)", j);
+        editarJornada(j, 80, 70).andExpect(status().isOk())
+                .andExpect(jsonPath("$.jornada.precio").value(80))
+                .andExpect(jsonPath("$.jornada.pctPremio").value(70));
+        assertThat(jdbc.queryForObject("SELECT monto FROM quinielas WHERE id_jornada = ?", Integer.class, j)).isEqualTo(80);
+
+        // Con una quiniela pagada el precio ya no cambia (el % sí)
+        jdbc.update("UPDATE quinielas SET estado = 'participando' WHERE id_jornada = ?", j);
+        editarJornada(j, 90, 70).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("TIENE_PAGOS"));
+        editarJornada(j, 80, 75).andExpect(status().isOk());
+
+        // Cerrada: solo la fecha
+        accion(j, "cerrar").andExpect(status().isOk());
+        editarPartido(p1, eq.get(0), eq.get(3), enHoras(30)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("YA_EMPEZO"));
+        editarPartido(p1, eq.get(0), eq.get(2), enHoras(40)).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bitacora_admin WHERE accion = 'EDITAR_PARTIDO'", Integer.class)).isEqualTo(2);
     }
 
     @Test
@@ -141,7 +171,14 @@ class JornadasAdminTest {
         accion(j, "finalizar").andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("PARTIDOS_PENDIENTES"));
         mvc.perform(auth(post("/api/admin/partidos/" + p2 + "/suspender"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.partidos[1].estado").value("suspendido"));
+        // Una suspensión se puede deshacer mientras la jornada no esté finalizada
+        mvc.perform(auth(post("/api/admin/partidos/" + p2 + "/reactivar"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.partidos[1].estado").value("programado"));
+        mvc.perform(auth(post("/api/admin/partidos/" + p2 + "/reactivar"))).andExpect(status().isConflict());
+        mvc.perform(auth(post("/api/admin/partidos/" + p2 + "/suspender"))).andExpect(status().isOk());
         accion(j, "finalizar").andExpect(status().isOk()).andExpect(jsonPath("$.jornada.estadoVisual").value("FINALIZADA"));
+        mvc.perform(auth(post("/api/admin/partidos/" + p2 + "/reactivar"))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("JORNADA_FINALIZADA"));
 
         resultado(p1, 3, 0).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("JORNADA_FINALIZADA"));
 
@@ -202,6 +239,16 @@ class JornadasAdminTest {
     private ResultActions agregar(int jornada, int local, int visita, Instant fecha) throws Exception {
         return mvc.perform(auth(post("/api/admin/jornadas/" + jornada + "/partidos")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"idLocal\":%d,\"idVisitante\":%d,\"fechaHora\":\"%s\"}".formatted(local, visita, fecha)));
+    }
+
+    private ResultActions editarPartido(int partido, int local, int visita, Instant fecha) throws Exception {
+        return mvc.perform(auth(put("/api/admin/partidos/" + partido)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"idLocal\":%d,\"idVisitante\":%d,\"fechaHora\":\"%s\"}".formatted(local, visita, fecha)));
+    }
+
+    private ResultActions editarJornada(int jornada, int precio, int pct) throws Exception {
+        return mvc.perform(auth(put("/api/admin/jornadas/" + jornada)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"precio\":%d,\"pctPremio\":%d}".formatted(precio, pct)));
     }
 
     private ResultActions abrir(int jornada) throws Exception {

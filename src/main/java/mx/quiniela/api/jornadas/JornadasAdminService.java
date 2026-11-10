@@ -115,18 +115,34 @@ public class JornadasAdminService {
         return detalleDe(j);
     }
 
-    /** Nombre siempre; precio y % de premio solo en borrador (después ya hay quinielas con ese precio). */
+    /**
+     * Nombre siempre. Precio y % de premio se pueden corregir hasta que la jornada se finaliza; el precio, además,
+     * solo mientras nadie haya pagado ni mandado comprobante (las quinielas sin pago toman el precio nuevo).
+     */
     @Transactional
-    public JornadaDetalleDto editar(Integer idJornada, String nombre, BigDecimal precio, BigDecimal pctPremio) {
+    public JornadaDetalleDto editar(Integer idAdmin, Integer idJornada, String nombre, BigDecimal precio, BigDecimal pctPremio) {
         Jornada j = buscarJornada(idJornada);
         if (nombre != null && !nombre.isBlank()) j.setNombre(nombre.trim());
-        boolean cambiaDinero = (precio != null && precio.compareTo(j.getPrecio()) != 0)
-                || (pctPremio != null && pctPremio.compareTo(j.getPctPremio()) != 0);
-        if (cambiaDinero) {
-            exigirBorrador(j, "El precio y el % de premio solo se pueden cambiar mientras la jornada está en borrador");
-            if (precio != null) j.setPrecio(precio);
-            if (pctPremio != null) j.setPctPremio(pctPremio);
+        boolean cambiaPrecio = precio != null && precio.compareTo(j.getPrecio()) != 0;
+        boolean cambiaPct = pctPremio != null && pctPremio.compareTo(j.getPctPremio()) != 0;
+        if (!cambiaPrecio && !cambiaPct) return detalleDe(j);
+        if (j.getEstado() == EstadoJornada.finalizada) {
+            throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; su precio y premio ya no se pueden cambiar");
         }
+        if (cambiaPrecio && jornadas.contarQuinielasConPago(j.getId()) > 0) {
+            throw conflicto("TIENE_PAGOS", "Ya hay quinielas pagadas o con comprobante a este precio; ya no se puede cambiar");
+        }
+        Map<String, Object> antes = new java.util.LinkedHashMap<>();
+        antes.put("precio", j.getPrecio());
+        antes.put("pct_premio", j.getPctPremio());
+        if (cambiaPrecio) {
+            j.setPrecio(precio);
+            jornadas.actualizarMontoSinPago(j.getId(), precio);
+        }
+        if (cambiaPct) j.setPctPremio(pctPremio);
+        jornadas.flush();
+        bitacora.registrar(idAdmin, "EDITAR_JORNADA", "jornadas", j.getId(), antes,
+                Map.of("precio", j.getPrecio(), "pct_premio", j.getPctPremio()));
         return detalleDe(j);
     }
 
@@ -239,14 +255,36 @@ public class JornadasAdminService {
         return detalleDe(j);
     }
 
+    /**
+     * En borrador se edita libre. Con la jornada activa o cerrada se puede corregir un partido que no se ha jugado:
+     * la fecha siempre; los equipos solo mientras la jornada recibe pronósticos (los jugadores aún pueden ajustar).
+     */
     @Transactional
-    public JornadaDetalleDto editarPartido(Integer idPartido, Integer idLocal, Integer idVisitante, Instant fechaHora) {
+    public JornadaDetalleDto editarPartido(Integer idAdmin, Integer idPartido, Integer idLocal, Integer idVisitante, Instant fechaHora) {
         Partido p = buscarPartido(idPartido);
         Jornada j = buscarJornada(p.getIdJornada());
-        exigirBorrador(j, "Los partidos solo se editan mientras la jornada está en borrador");
+        boolean borrador = j.getEstado() == EstadoJornada.borrador;
+        if (!borrador) {
+            if (j.getEstado() == EstadoJornada.finalizada) {
+                throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; sus partidos no se pueden cambiar");
+            }
+            if (p.getEstado() != EstadoPartido.programado) {
+                throw conflicto("PARTIDO_JUGADO", "Solo se pueden editar partidos que no tienen marcador ni están suspendidos");
+            }
+            boolean cambianEquipos = !Objects.equals(idLocal, p.getIdLocal()) || !Objects.equals(idVisitante, p.getIdVisitante());
+            if (cambianEquipos && !aceptaPronosticos(j, fechaCierre(partidosDe(j)), clock.instant())) {
+                throw conflicto("YA_EMPEZO", "La jornada ya no recibe pronósticos: solo puedes cambiar la fecha del partido");
+            }
+        }
+        Map<String, Object> antes = Map.of("id_local", p.getIdLocal(), "id_visitante", p.getIdVisitante(),
+                "fecha_hora", p.getFechaHora().toString());
         validarPartido(j, p.getId(), idLocal, idVisitante, fechaHora);
         p.programar(idLocal, idVisitante, fechaHora);
         guardar(p);
+        if (!borrador) {
+            bitacora.registrar(idAdmin, "EDITAR_PARTIDO", "partidos", p.getId(), antes,
+                    Map.of("id_local", idLocal, "id_visitante", idVisitante, "fecha_hora", fechaHora.toString()));
+        }
         return detalleDe(j);
     }
 
@@ -296,6 +334,23 @@ public class JornadasAdminService {
         p.suspender();
         partidos.flush();
         bitacora.registrar(idAdmin, "SUSPENDER_PARTIDO", "partidos", p.getId(), Map.of("estado", antes), Map.of("estado", "suspendido"));
+        return detalleDe(j);
+    }
+
+    /** Deshace una suspensión: el partido vuelve a programado y otra vez cuenta para puntos. */
+    @Transactional
+    public JornadaDetalleDto reactivarPartido(Integer idAdmin, Integer idPartido) {
+        Partido p = buscarPartido(idPartido);
+        Jornada j = buscarJornada(p.getIdJornada());
+        if (j.getEstado() == EstadoJornada.finalizada) {
+            throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada");
+        }
+        if (p.getEstado() != EstadoPartido.suspendido) {
+            throw conflicto("ESTADO_INVALIDO", "El partido no está suspendido");
+        }
+        p.reactivar();
+        partidos.flush();
+        bitacora.registrar(idAdmin, "REACTIVAR_PARTIDO", "partidos", p.getId(), Map.of("estado", "suspendido"), Map.of("estado", "programado"));
         return detalleDe(j);
     }
 

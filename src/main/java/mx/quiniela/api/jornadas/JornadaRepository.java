@@ -21,4 +21,15 @@ public interface JornadaRepository extends JpaRepository<Jornada, Integer> {
 
     @Query(value = "SELECT COUNT(*) FROM quinielas WHERE id_jornada = :id", nativeQuery = true)
     long contarQuinielas(@Param("id") Integer idJornada);
+
+    /** Quinielas que ya pagaron o mandaron comprobante: su monto ya no se puede cambiar. */
+    @Query(value = "SELECT COUNT(*) FROM quinielas WHERE id_jornada = :id AND estado IN ('en_revision', 'participando')",
+            nativeQuery = true)
+    long contarQuinielasConPago(@Param("id") Integer idJornada);
+
+    /** Al corregir el precio, las quinielas que aún no pagan toman el precio nuevo. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(value = "UPDATE quinielas SET monto = :monto WHERE id_jornada = :id AND estado IN ('borrador', 'pendiente_pago', 'rechazada')",
+            nativeQuery = true)
+    int actualizarMontoSinPago(@Param("id") Integer idJornada, @Param("monto") java.math.BigDecimal monto);
 }
