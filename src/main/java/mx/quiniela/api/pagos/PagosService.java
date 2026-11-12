@@ -33,6 +33,7 @@ import mx.quiniela.api.pagos.PagoDtos.PagoDto;
 import mx.quiniela.api.pagos.PagoDtos.PorCobrarDto;
 import mx.quiniela.api.pagos.PagoDtos.QuinielaRef;
 import mx.quiniela.api.pagos.PagoDtos.UsuarioRef;
+import mx.quiniela.api.quinielas.EstadoQuiniela;
 import mx.quiniela.api.quinielas.Quiniela;
 import mx.quiniela.api.quinielas.QuinielaRepository;
 import mx.quiniela.api.usuarios.EstadoUsuario;
@@ -87,7 +88,10 @@ public class PagosService {
     @Transactional(readOnly = true)
     public PagoDto pagoDe(Quiniela q, boolean usuarioAprobado, boolean aceptaPronosticos) {
         Comprobante c = comprobantes.findFirstByIdQuinielaOrderByIdDesc(q.getId()).orElse(null);
-        return new PagoDto(usuarioAprobado && aceptaPronosticos && q.puedeSubirPago(), ComprobanteDto.de(c));
+        // En revisión todavía se puede cambiar el archivo (por si se equivocó) hasta que el admin lo revise
+        boolean cambiable = q.getEstado() == EstadoQuiniela.en_revision && c != null
+                && c.getEstado() == EstadoComprobante.en_revision && !c.esManual();
+        return new PagoDto(usuarioAprobado && aceptaPronosticos && (q.puedeSubirPago() || cambiable), ComprobanteDto.de(c));
     }
 
     @Transactional
@@ -98,10 +102,15 @@ public class PagosService {
         if (u.getEstado() != EstadoUsuario.aprobado) {
             throw ApiException.prohibido("USUARIO_NO_APROBADO", "Tu cuenta está pendiente de aprobación por el administrador");
         }
-        if (!q.puedeSubirPago()) {
+        // Si se equivocó de archivo puede cambiarlo mientras el admin no lo haya revisado
+        Comprobante anterior = q.getEstado() == EstadoQuiniela.en_revision
+                ? comprobantes.findFirstByIdQuinielaOrderByIdDesc(q.getId())
+                        .filter(c -> c.getEstado() == EstadoComprobante.en_revision && !c.esManual()).orElse(null)
+                : null;
+        if (!q.puedeSubirPago() && anterior == null) {
             throw conflicto("ESTADO_INVALIDO", switch (q.getEstado()) {
                 case borrador -> "Primero envía la quiniela con todos tus pronósticos";
-                case en_revision -> "Ya hay un comprobante en revisión para esta quiniela";
+                case en_revision -> "Tu comprobante ya fue revisado";
                 case participando -> "El pago de esta quiniela ya fue validado";
                 default -> "Esta quiniela no acepta comprobantes";
             });
@@ -120,8 +129,14 @@ public class PagosService {
             @Override
             public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) almacen.borrar(clave);
+                else if (anterior != null) almacen.borrar(anterior.getArchivoKey());
             }
         });
+        if (anterior != null) {
+            // Aún no se revisaba: se reemplaza (solo puede haber uno en revisión por quiniela)
+            comprobantes.delete(anterior);
+            comprobantes.flush();
+        }
         comprobantes.save(new Comprobante(q.getId(), clave, tipo.mime, datos.length));
         q.pagoEnRevision(clock.instant());
         comprobantes.flush();
@@ -147,7 +162,8 @@ public class PagosService {
         MapSqlParameterSource p = new MapSqlParameterSource("j", idJornada);
         jdbc.query("""
                 SELECT c.estado::text AS estado, COUNT(*) AS n FROM comprobantes c JOIN quinielas q USING (id_quiniela)
-                WHERE (CAST(:j AS int) IS NULL OR q.id_jornada = :j) GROUP BY c.estado""", p,
+                WHERE (CAST(:j AS int) IS NULL OR q.id_jornada = :j)
+                """ + JORNADA_ACTIVA + " GROUP BY c.estado", p,
                 rs -> {
                     conteos.put(rs.getString("estado"), rs.getLong("n"));
                 });
@@ -157,7 +173,7 @@ public class PagosService {
         List<ComprobanteAdminDto> filas = jdbc.query(SELECT_ADMIN + """
                 WHERE c.estado = CAST(:estado AS estado_comprobante)
                   AND (CAST(:j AS int) IS NULL OR q.id_jornada = :j)
-                """ + " ORDER BY " + orden + " LIMIT 300", p, PagosService::filaAdmin);
+                """ + JORNADA_ACTIVA + " ORDER BY " + orden + " LIMIT 300", p, PagosService::filaAdmin);
         return new ListaPagosDto(conteos, filas);
     }
 
@@ -319,12 +335,18 @@ public class PagosService {
                 new MapSqlParameterSource("id", id), PagosService::filaAdmin);
     }
 
+    /**
+     * Validación de pagos: solo jornadas activas. Las finalizadas ya no admiten cambios de pago,
+     * así que sus comprobantes ya no se muestran (requiere el alias q de quinielas).
+     */
+    private static final String JORNADA_ACTIVA =
+            " AND q.id_jornada IN (SELECT id_jornada FROM jornadas WHERE estado <> 'finalizada') ";
+
     /** Enviadas sin pago en revisión ni aprobado (requiere el parámetro :j, puede ser null). */
     private static final String WHERE_POR_COBRAR = """
             WHERE q.estado IN ('pendiente_pago', 'rechazada')
               AND (CAST(:j AS int) IS NULL OR q.id_jornada = :j)
-              AND q.id_jornada IN (SELECT id_jornada FROM jornadas WHERE estado <> 'finalizada')
-            """;
+            """ + JORNADA_ACTIVA;
 
     private static final String SELECT_ADMIN = """
             SELECT c.id_comprobante, c.tipo, c.estado::text AS estado, c.subido_at, c.mime_type, c.tamano_bytes,

@@ -26,7 +26,7 @@ public final class PagoDtos {
         }
     }
 
-    /** puedeSubir: la quiniela espera pago (o fue rechazada) y la jornada no ha cerrado. */
+    /** puedeSubir: la quiniela espera pago (o fue rechazada, o su comprobante sigue sin revisar) y la jornada no ha cerrado. */
     public record PagoDto(boolean puedeSubir, ComprobanteDto comprobante) {
     }
 

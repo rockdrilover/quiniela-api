@@ -98,10 +98,16 @@ class PagosTest {
 
         subir(ana, quiniela, "ticket.png", PNG).andExpect(status().isOk())
                 .andExpect(jsonPath("$.quiniela.estado").value("en_revision"))
-                .andExpect(jsonPath("$.pago.puedeSubir").value(false))
+                .andExpect(jsonPath("$.pago.puedeSubir").value(true))
                 .andExpect(jsonPath("$.pago.comprobante.estado").value("en_revision"))
                 .andExpect(jsonPath("$.pago.comprobante.mimeType").value("image/png"));
-        subir(ana, quiniela, "otro.png", PNG).andExpect(status().isConflict());
+
+        // Se equivocó de archivo: lo cambia mientras el admin no lo revise (reemplaza al anterior)
+        subir(ana, quiniela, "correcto.pdf", PDF).andExpect(status().isOk())
+                .andExpect(jsonPath("$.quiniela.estado").value("en_revision"))
+                .andExpect(jsonPath("$.pago.comprobante.mimeType").value("application/pdf"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM comprobantes", Integer.class)).isEqualTo(1);
+        mvc.perform(como(ana, get("/api/quinielas/" + quiniela + "/comprobante"))).andExpect(content().bytes(PDF));
 
         int idC = JsonPath.read(mvc.perform(como(admin, get("/api/admin/pagos"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.conteos.en_revision").value(1))
@@ -116,15 +122,25 @@ class PagosTest {
                 .andExpect(jsonPath("$.codigo").value("SIN_VER"));
 
         mvc.perform(como(admin, get("/api/admin/pagos/" + idC + "/archivo"))).andExpect(status().isOk())
-                .andExpect(content().contentType("image/png"))
+                .andExpect(content().contentType("application/pdf"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
-                .andExpect(content().bytes(PNG));
+                .andExpect(content().bytes(PDF));
 
         mvc.perform(como(admin, put("/api/admin/pagos/" + idC + "/aprobar"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.estado").value("aprobado"))
                 .andExpect(jsonPath("$.quiniela.estado").value("participando"));
         mvc.perform(como(admin, put("/api/admin/pagos/" + idC + "/aprobar"))).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.codigo").value("YA_REVISADO"));
+        // Ya revisado, ya no se puede cambiar
+        subir(ana, quiniela, "otro.png", PNG).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("ESTADO_INVALIDO"));
+
+        // Validación de pagos muestra solo jornadas activas: al finalizar la jornada ya no aparece
+        jdbc.update("UPDATE jornadas SET estado = 'finalizada' WHERE id_jornada = ?", jornada);
+        mvc.perform(como(admin, get("/api/admin/pagos?estado=aprobado")))
+                .andExpect(jsonPath("$.conteos.aprobado").value(0))
+                .andExpect(jsonPath("$.elementos.length()").value(0));
+        jdbc.update("UPDATE jornadas SET estado = 'abierta' WHERE id_jornada = ?", jornada);
 
         // Ya cuenta para el ranking y quedó en la bitácora
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM v_ranking_jornada", Integer.class)).isEqualTo(1);

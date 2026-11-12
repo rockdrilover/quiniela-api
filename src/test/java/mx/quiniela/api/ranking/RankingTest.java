@@ -85,16 +85,16 @@ class RankingTest {
     }
 
     @Test
-    void antesDelCierreNoSeVenLosPronosticosAjenos() throws Exception {
+    void antesDelCierreSeVenLosPronosticosDeLosParticipantes() throws Exception {
         mvc.perform(como(ana, get("/api/ranking"))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.jornada.id").value(jornada))
-                .andExpect(jsonPath("$.pronosticosVisibles").value(false))
+                .andExpect(jsonPath("$.pronosticosVisibles").value(true))
                 .andExpect(jsonPath("$.filas.length()").value(2))
                 .andExpect(jsonPath("$.bolsa.participantes").value(2))
                 .andExpect(jsonPath("$.bolsa.bolsa").value(80.0))
                 .andExpect(jsonPath("$.filas[?(@.username == 'ana')].pronosticos.length()").value(2))
                 .andExpect(jsonPath("$.filas[?(@.username == 'ana')].esMia").value(true))
-                .andExpect(jsonPath("$.filas[?(@.username == 'beto')].pronosticos.length()").value(0));
+                .andExpect(jsonPath("$.filas[?(@.username == 'beto')].pronosticos.length()").value(2));
     }
 
     @Test

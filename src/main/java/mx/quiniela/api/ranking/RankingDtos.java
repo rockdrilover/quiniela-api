@@ -45,7 +45,7 @@ public final class RankingDtos {
             /** Solo cuando la jornada está finalizada: posición 1 y su parte de la bolsa. */
             boolean ganador,
             BigDecimal premio,
-            /** Vacío mientras la jornada acepte pronósticos (salvo las propias), para que nadie copie. */
+            /** Pronósticos de la quiniela (solo cuentan las que ya están participando). */
             List<CeldaDto> pronosticos) {
     }
 

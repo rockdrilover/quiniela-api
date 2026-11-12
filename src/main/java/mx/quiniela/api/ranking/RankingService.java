@@ -98,7 +98,8 @@ public class RankingService {
         }
 
         JornadaDetalleDto detalle = vistas.detalle(j);
-        boolean visibles = !detalle.jornada().aceptaPronosticos();
+        // Se ven los pronósticos de todos los que ya están participando (pago validado), aunque la jornada siga abierta
+        boolean visibles = true;
         boolean finalizada = j.getEstado() == EstadoJornada.finalizada;
         MapSqlParameterSource p = new MapSqlParameterSource("j", j.getId());
 
@@ -121,8 +122,6 @@ public class RankingService {
                 FROM v_puntos_pronostico vp JOIN quinielas q ON q.id_quiniela = vp.id_quiniela
                 WHERE q.id_jornada = :j AND q.estado = 'participando'
                 """, p, rs -> {
-                    boolean propia = idUsuario.equals(rs.getInt("id_usuario"));
-                    if (!visibles && !propia) return;
                     celdas.computeIfAbsent(rs.getInt("id_quiniela"), k -> new ArrayList<>()).add(new CeldaDto(
                             rs.getInt("id_partido"), rs.getInt("goles_local"), rs.getInt("goles_visitante"),
                             rs.getString("seleccion"), rs.getObject("puntos", Integer.class), rs.getBoolean("es_exacto")));
