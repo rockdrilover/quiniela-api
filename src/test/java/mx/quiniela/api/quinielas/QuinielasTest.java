@@ -139,6 +139,30 @@ class QuinielasTest {
     }
 
     @Test
+    void misQuinielasSoloDeLaTemporadaActual() throws Exception {
+        abrir();
+        crear(ana, true, p(0, 1, 0), p(1, 0, 0), p(2, 2, 2)).andExpect(status().isCreated());
+        // Una quiniela de un torneo anterior ya no se lista
+        int anterior = jdbc.queryForObject(
+                "INSERT INTO temporadas (nombre, estado) VALUES ('Clausura 2025', 'finalizado') RETURNING id_temporada", Integer.class);
+        try {
+            int jVieja = jdbc.queryForObject("""
+                    INSERT INTO jornadas (id_temporada, numero_jornada, nombre, estado, visible, precio)
+                    VALUES (?, 1, 'Jornada 1', 'finalizada', TRUE, 50) RETURNING id_jornada""", Integer.class, anterior);
+            jdbc.update("INSERT INTO quinielas (id_usuario, id_jornada, monto) VALUES ((SELECT id_usuario FROM usuarios WHERE username = 'ana'), ?, 50)", jVieja);
+
+            mvc.perform(como(ana, get("/api/quinielas"))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quinielas.length()").value(1))
+                    .andExpect(jsonPath("$.quinielas[0].idJornada").value(jornada))
+                    .andExpect(jsonPath("$.jornadas.length()").value(1));
+        } finally {
+            jdbc.update("DELETE FROM quinielas WHERE id_jornada IN (SELECT id_jornada FROM jornadas WHERE id_temporada = ?)", anterior);
+            jdbc.update("DELETE FROM jornadas WHERE id_temporada = ?", anterior);
+            jdbc.update("DELETE FROM temporadas WHERE id_temporada = ?", anterior);
+        }
+    }
+
+    @Test
     void validaPartidosYGoles() throws Exception {
         abrir();
         crear(ana, false, "{\"idPartido\":999,\"golesLocal\":1,\"golesVisitante\":0}")

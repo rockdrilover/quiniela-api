@@ -81,6 +81,10 @@ class JornadasAdminTest {
         // Abierta y sin empezar: se corrigen equipos y fecha
         editarPartido(p1, eq.get(0), eq.get(2), enHoras(30)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.partidos[0].visitante.id").value(eq.get(2)));
+        // Se le pasó un partido: lo agrega con la jornada activa (queda en la bitácora)
+        agregar(j, eq.get(4), eq.get(5), enHoras(36)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.jornada.totalPartidos").value(2));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bitacora_admin WHERE accion = 'AGREGAR_PARTIDO'", Integer.class)).isEqualTo(1);
         // El precio se corrige y las quinielas sin pago toman el nuevo
         jdbc.update("INSERT INTO quinielas (id_usuario, id_jornada, monto) VALUES (1, ?, 50)", j);
         editarJornada(j, 80, 70).andExpect(status().isOk())
@@ -96,6 +100,8 @@ class JornadasAdminTest {
         // Cerrada: solo la fecha
         accion(j, "cerrar").andExpect(status().isOk());
         editarPartido(p1, eq.get(0), eq.get(3), enHoras(30)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("YA_EMPEZO"));
+        agregar(j, eq.get(6), eq.get(7), enHoras(36)).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.codigo").value("YA_EMPEZO"));
         editarPartido(p1, eq.get(0), eq.get(2), enHoras(40)).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bitacora_admin WHERE accion = 'EDITAR_PARTIDO'", Integer.class)).isEqualTo(2);
@@ -152,8 +158,7 @@ class JornadasAdminTest {
         agregar(otra, eq.get(4), eq.get(5), enHoras(30));
         abrir(otra).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("OTRA_ABIERTA"));
 
-        // Abierta: ya no se tocan los partidos ni se capturan resultados
-        agregar(j, eq.get(4), eq.get(5), enHoras(30)).andExpect(status().isConflict());
+        // Abierta: no se capturan resultados
         resultado(p1, 2, 1).andExpect(status().isConflict()).andExpect(jsonPath("$.codigo").value("ACEPTA_PRONOSTICOS"));
         mvc.perform(auth(put("/api/admin/jornadas/" + j + "/visible")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"visible\":false}")).andExpect(status().isConflict());

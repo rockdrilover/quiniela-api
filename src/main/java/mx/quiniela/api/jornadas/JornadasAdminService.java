@@ -29,7 +29,7 @@ import mx.quiniela.api.jornadas.JornadaDtos.ListaJornadasDto;
  * Gestión de jornadas y partidos por el administrador (pantallas 4 y 5).
  *
  * Ciclo de vida de una jornada:
- *   borrador  → se arman los partidos (solo aquí se agregan, editan o quitan)
+ *   borrador  → se arman los partidos (solo aquí se quitan; se pueden agregar y corregir mientras no empiece ninguno)
  *   abierta   → los usuarios capturan pronósticos hasta que empieza el primer partido (solo una abierta a la vez)
  *   cerrada   → ya no acepta pronósticos; el admin captura marcadores
  *   finalizada→ todos los partidos tienen marcador (o están suspendidos); el ranking queda definitivo
@@ -246,12 +246,27 @@ public class JornadasAdminService {
     // ================================================================ partidos
 
     @Transactional
-    public JornadaDetalleDto agregarPartido(Integer idJornada, Integer idLocal, Integer idVisitante, Instant fechaHora) {
+    public JornadaDetalleDto agregarPartido(Integer idAdmin, Integer idJornada, Integer idLocal, Integer idVisitante, Instant fechaHora) {
         Jornada j = buscarJornada(idJornada);
-        exigirBorrador(j, "Los partidos solo se agregan mientras la jornada está en borrador");
+        boolean borrador = j.getEstado() == EstadoJornada.borrador;
+        if (!borrador) {
+            // Si se le pasó un partido al activarla: se puede agregar mientras no empiece ninguno,
+            // así los jugadores todavía pueden pronosticarlo (las quinielas enviadas lo deben completar)
+            if (j.getEstado() == EstadoJornada.finalizada) {
+                throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; ya no se pueden agregar partidos");
+            }
+            if (!aceptaPronosticos(j, fechaCierre(partidosDe(j)), clock.instant())) {
+                throw conflicto("YA_EMPEZO", "Solo se agregan partidos mientras la jornada está abierta y no empieza ningún partido");
+            }
+        }
         validarPartido(j, null, idLocal, idVisitante, fechaHora);
         short orden = (short) (partidos.maxOrden(j.getId()) + 1);
-        guardar(new Partido(j.getId(), orden, idLocal, idVisitante, fechaHora));
+        Partido p = new Partido(j.getId(), orden, idLocal, idVisitante, fechaHora);
+        guardar(p);
+        if (!borrador) {
+            bitacora.registrar(idAdmin, "AGREGAR_PARTIDO", "partidos", p.getId(), null,
+                    Map.of("id_local", idLocal, "id_visitante", idVisitante, "fecha_hora", fechaHora.toString()));
+        }
         return detalleDe(j);
     }
 

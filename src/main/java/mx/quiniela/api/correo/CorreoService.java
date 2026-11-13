@@ -109,6 +109,19 @@ public class CorreoService {
         enviar(para, "Pago validado: Quiniela #" + folio, cuerpo);
     }
 
+    /** El admin registró a mano un pago recibido por fuera (efectivo o transferencia sin comprobante). */
+    @Async
+    public void enviarPagoRegistrado(String para, String nombre, String jornada, int numero, Integer folio, String nota) {
+        String detalle = nota == null ? "" : "\nNota del administrador: " + nota + "\n";
+        String cuerpo = """
+                Hola %s,
+
+                El administrador registró tu pago de la Quiniela %d (folio #%d) de la %s.
+                Tu pago quedó confirmado y ya estás participando: tus puntos cuentan para el ranking. ¡Suerte!
+                %s""".formatted(nombre, numero, folio, jornada, detalle);
+        enviar(para, "Pago registrado: Quiniela #" + folio, cuerpo);
+    }
+
     @Async
     public void enviarPagoRechazado(String para, String nombre, String jornada, int numero, Integer folio, String motivo) {
         String cuerpo = """
@@ -135,6 +148,7 @@ public class CorreoService {
             msg.setSubject(asunto);
             msg.setText(cuerpo);
             sender.send(msg);
+            log.info("Correo enviado a {}: {}", para, asunto);
         } catch (Exception e) {
             log.error("No se pudo enviar el correo a {}: {}", para, e.getMessage());
         }

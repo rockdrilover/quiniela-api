@@ -231,7 +231,7 @@ public class PagosService {
         if (n != null) despues.put("nota", n);
         bitacora.registrar(idAdmin, "PAGO_MANUAL", "comprobantes", c.getId(),
                 Map.of("estado", antes), despues);
-        avisar(q, true, null);
+        avisarPagoRegistrado(q, n);
         return fila(c.getId());
     }
 
@@ -291,6 +291,17 @@ public class PagosService {
             throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; su ranking es definitivo");
         }
         return c;
+    }
+
+    private void avisarPagoRegistrado(Quiniela q, String nota) {
+        Usuario u = usuarios.findById(q.getIdUsuario()).orElseThrow();
+        String jornada = jornadas.findById(q.getIdJornada()).map(Jornada::getNombre).orElse("");
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                correo.enviarPagoRegistrado(u.getCorreo(), u.getNombre(), jornada, q.getNumero(), q.getFolio(), nota);
+            }
+        });
     }
 
     private void avisar(Quiniela q, boolean aprobado, String motivo) {

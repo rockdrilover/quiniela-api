@@ -94,12 +94,20 @@ public class QuinielasService {
         Instant ahora = clock.instant();
         Optional<Jornada> actual = buscarJornadaActual();
 
-        List<Quiniela> mias = quinielas.findByIdUsuarioOrderByIdJornadaDescNumeroAsc(idUsuario);
-        Set<Integer> idsJornada = mias.stream().map(Quiniela::getIdJornada).collect(Collectors.toCollection(HashSet::new));
+        List<Quiniela> todas = quinielas.findByIdUsuarioOrderByIdJornadaDescNumeroAsc(idUsuario);
+        Set<Integer> idsJornada = todas.stream().map(Quiniela::getIdJornada).collect(Collectors.toCollection(HashSet::new));
         actual.ifPresent(j -> idsJornada.add(j.getId()));
-
-        Map<Integer, Jornada> js = jornadas.findAllById(idsJornada).stream()
+        Map<Integer, Jornada> todasJs = jornadas.findAllById(idsJornada).stream()
                 .collect(Collectors.toMap(Jornada::getId, Function.identity()));
+
+        // Solo la temporada actual: la de la jornada vigente, si no la que está en curso, si no la más reciente jugada
+        Integer temporada = actual.map(Jornada::getIdTemporada)
+                .or(() -> temporadas.enCurso().map(t -> t.getId()))
+                .orElseGet(() -> todasJs.values().stream().map(Jornada::getIdTemporada).max(Integer::compare).orElse(null));
+        Map<Integer, Jornada> js = todasJs.values().stream()
+                .filter(j -> temporada == null || temporada.equals(j.getIdTemporada()))
+                .collect(Collectors.toMap(Jornada::getId, Function.identity()));
+        List<Quiniela> mias = todas.stream().filter(q -> js.containsKey(q.getIdJornada())).toList();
         Map<Integer, List<Partido>> partidosPorJornada = new HashMap<>();
         Map<Integer, JornadaDto> dtos = new LinkedHashMap<>();
         js.values().stream().sorted((a, b) -> Integer.compare(b.getNumero(), a.getNumero())).forEach(j -> {

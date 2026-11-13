@@ -250,7 +250,7 @@ class PagosTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM v_ranking_jornada", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForList("SELECT accion FROM bitacora_admin WHERE entidad = 'comprobantes'", String.class))
                 .containsExactly("PAGO_MANUAL");
-        verify(correo).enviarPagoValidado(eq("ana@quiniela.mx"), anyString(), anyString(), eq(1), anyInt());
+        verify(correo).enviarPagoRegistrado(eq("ana@quiniela.mx"), anyString(), anyString(), eq(1), anyInt(), eq("Efectivo"));
     }
 
     @Test

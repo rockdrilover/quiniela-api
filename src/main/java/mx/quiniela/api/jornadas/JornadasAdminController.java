@@ -96,8 +96,9 @@ public class JornadasAdminController {
 
     @PostMapping("/jornadas/{id}/partidos")
     @ResponseStatus(HttpStatus.CREATED)
-    public JornadaDetalleDto agregarPartido(@PathVariable Integer id, @Valid @RequestBody PartidoRequest req) {
-        return servicio.agregarPartido(id, req.idLocal(), req.idVisitante(), req.fechaHora());
+    public JornadaDetalleDto agregarPartido(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id,
+                                            @Valid @RequestBody PartidoRequest req) {
+        return servicio.agregarPartido(admin(jwt), id, req.idLocal(), req.idVisitante(), req.fechaHora());
     }
 
     @PutMapping("/partidos/{id}")
