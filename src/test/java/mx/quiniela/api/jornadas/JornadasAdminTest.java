@@ -214,6 +214,26 @@ class JornadasAdminTest {
         mvc.perform(auth(delete("/api/admin/jornadas/" + j))).andExpect(status().isNoContent());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM jornadas", Integer.class)).isZero();
 
+        // Ya activa y con una quiniela sin pagar (con pronóstico): se puede eliminar, se va todo
+        int activa = idJornada(crear(50));
+        int p = idUltimoPartido(agregar(activa, eq.get(0), eq.get(1), enHoras(24)));
+        abrir(activa).andExpect(status().isOk());
+        int q = jdbc.queryForObject("INSERT INTO quinielas (id_usuario, id_jornada, monto) VALUES (1, ?, 50) RETURNING id_quiniela",
+                Integer.class, activa);
+        jdbc.update("INSERT INTO pronosticos (id_quiniela, id_partido, goles_local, goles_visitante) VALUES (?, ?, 1, 0)", q, p);
+        mvc.perform(auth(delete("/api/admin/jornadas/" + activa))).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM quinielas", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM jornadas", Integer.class)).isZero();
+
+        // Con un pago de por medio ya no
+        int pagada = idJornada(crear(50));
+        agregar(pagada, eq.get(0), eq.get(1), enHoras(24));
+        abrir(pagada).andExpect(status().isOk());
+        jdbc.update("INSERT INTO quinielas (id_usuario, id_jornada, monto, estado) VALUES (1, ?, 50, 'participando')", pagada);
+        mvc.perform(auth(delete("/api/admin/jornadas/" + pagada))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("TIENE_PAGOS"));
+        assertThat(jdbc.queryForList("SELECT accion FROM bitacora_admin WHERE accion = 'ELIMINAR_JORNADA'", String.class)).hasSize(2);
+
         Usuario u = new Usuario("pepe", "Pepe", "pepe@correo.com", encoder.encode(PASS));
         u.setEstado(EstadoUsuario.aprobado);
         usuarios.save(u);

@@ -27,6 +27,24 @@ public interface JornadaRepository extends JpaRepository<Jornada, Integer> {
             nativeQuery = true)
     long contarQuinielasConPago(@Param("id") Integer idJornada);
 
+    /** Quinielas con algún pago de por medio (comprobante subido, en revisión o validado): bloquean eliminar la jornada. */
+    @Query(value = """
+            SELECT COUNT(*) FROM quinielas q WHERE q.id_jornada = :id
+              AND (q.estado IN ('en_revision', 'participando')
+                   OR EXISTS (SELECT 1 FROM comprobantes c WHERE c.id_quiniela = q.id_quiniela))""",
+            nativeQuery = true)
+    long contarQuinielasConPagoOComprobante(@Param("id") Integer idJornada);
+
+    /** Al eliminar una jornada sin pagos: primero los pronósticos y luego las quinielas sin pagar. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(value = "DELETE FROM pronosticos WHERE id_quiniela IN (SELECT id_quiniela FROM quinielas WHERE id_jornada = :id)",
+            nativeQuery = true)
+    int borrarPronosticos(@Param("id") Integer idJornada);
+
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query(value = "DELETE FROM quinielas WHERE id_jornada = :id", nativeQuery = true)
+    int borrarQuinielas(@Param("id") Integer idJornada);
+
     /** Al corregir el precio, las quinielas que aún no pagan toman el precio nuevo. */
     @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
     @Query(value = "UPDATE quinielas SET monto = :monto WHERE id_jornada = :id AND estado IN ('borrador', 'pendiente_pago', 'rechazada')",

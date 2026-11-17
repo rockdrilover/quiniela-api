@@ -149,14 +149,22 @@ public class JornadasAdminService {
     @Transactional
     public void eliminar(Integer idAdmin, Integer idJornada) {
         Jornada j = buscarJornada(idJornada);
-        exigirBorrador(j, "Solo se pueden eliminar jornadas en borrador");
-        if (jornadas.contarQuinielas(j.getId()) > 0) {
-            throw conflicto("TIENE_QUINIELAS", "La jornada ya tiene quinielas; no se puede eliminar");
+        // Por si se equivocó al capturarla: se puede borrar aunque ya esté activa, mientras no haya dinero de por medio
+        if (j.getEstado() == EstadoJornada.finalizada) {
+            throw conflicto("JORNADA_FINALIZADA", "La jornada ya está finalizada; su ranking es definitivo y no se puede eliminar");
         }
+        if (jornadas.contarQuinielasConPagoOComprobante(j.getId()) > 0) {
+            throw conflicto("TIENE_PAGOS",
+                    "Hay quinielas con pago o comprobante en esta jornada; no se puede eliminar. Si te equivocaste, corrige los partidos");
+        }
+        int quinielasBorradas = (int) jornadas.contarQuinielas(j.getId());
+        jornadas.borrarPronosticos(j.getId());
+        jornadas.borrarQuinielas(j.getId());
         partidos.deleteByIdJornada(j.getId());
         jornadas.delete(j);
+        jornadas.flush();
         bitacora.registrar(idAdmin, "ELIMINAR_JORNADA", "jornadas", idJornada,
-                Map.of("nombre", j.getNombre()), null);
+                Map.of("nombre", j.getNombre(), "estado", j.getEstado().name(), "quinielas_sin_pago", quinielasBorradas), null);
     }
 
     /** Abre la jornada a pronósticos. También sirve para reabrir una cerrada si el primer partido no ha empezado. */
